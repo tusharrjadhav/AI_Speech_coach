@@ -7,6 +7,18 @@ transcript's wording, not how the speaker sounded. After receiving suggestions,
 you can ask Gemma for an improved transcript and compare it with the original;
 the original is never replaced automatically.
 
+The **Listen to suggestions** control reads the displayed AI advice using the
+device's selected Android text-to-speech engine. It chooses an installed voice
+for the device language that the engine marks as not requiring a network; if
+none is available, install an offline voice in the device's text-to-speech
+settings. Reading can be stopped and also stops when recording, playback, or
+another operation starts, or when the app leaves the screen.
+
+The app does not intentionally send suggestions to a cloud TTS service. However,
+the installed TTS engine is a separate app, and its offline-voice flag does not
+guarantee that the engine collects no diagnostics or other data. Check that
+engine's privacy policy and settings.
+
 ## Run on Android
 
 Open the project in Android Studio with JDK 17 or newer and Android SDK 36, or run:
@@ -81,8 +93,10 @@ Recognition and boundary merging can still be wrong, so review the transcript.
 - `transcription-mediapipe`: Android MediaPipe audio transcription adapter.
 - `coaching-gemma`: optional Android LiteRT-LM text-coaching adapter.
 
-Adapters implement interfaces in `shared`, so other speech recognition and
-coaching implementations can be added without changing the analysis rules.
+Adapters implement interfaces in `shared`, so other speech recognition, coaching,
+and speech-output implementations can be added without changing the analysis
+rules. The Android entry point supplies its speech-output adapter to the
+ViewModel, while the shared UI passes the displayed suggestion text to it.
 The iOS and desktop targets are foundations, not finished applications.
 Module plugin and library versions are managed in `gradle/libs.versions.toml`;
 the settings-level toolchain resolver is declared in `settings.gradle.kts`
@@ -90,6 +104,14 @@ because Gradle does not support catalog plugin aliases there.
 
 Run the analysis, transcription-merge, and model-download tests with
 `./gradlew :shared:desktopTest :transcription-mediapipe:testDebugUnitTest :app:testDebugUnitTest`.
+
+The Android instrumentation tests include an opt-in synthetic speech probe
+that requires an installed offline voice for the device language. To run it
+after installing the debug app and test APK on an emulator or device, use:
+
+```sh
+adb shell am instrument -w -e class com.example.speechcoach.AndroidSpeechOutputTest -e speechCoachTtsProbe true com.example.speechcoach.test/androidx.test.runner.AndroidJUnitRunner
+```
 
 ### Experimental Gemma audio probe
 

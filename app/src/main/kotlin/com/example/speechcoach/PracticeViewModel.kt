@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.speechcoach.coaching.GemmaCoach
 import com.example.speechcoach.core.AudioClip
 import com.example.speechcoach.core.SpeechAnalyzer
+import com.example.speechcoach.core.SpeechOutput
 import com.example.speechcoach.core.TranscriptComparer
 import com.example.speechcoach.transcription.MediaPipeTranscriber
 import com.example.speechcoach.ui.PracticeState
@@ -23,7 +24,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class PracticeViewModel(application: Application) : AndroidViewModel(application) {
+class PracticeViewModel(
+    application: Application,
+    private val speechOutput: SpeechOutput,
+) : AndroidViewModel(application) {
     private val recorder = AudioRecorder(application)
     private val models = ModelStore(application)
     private val preferences = application.getSharedPreferences("practice", 0)
@@ -43,6 +47,8 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
     val state = _state.asStateFlow()
     private var recordJob: Job? = null
     private var player: MediaPlayer? = null
+    private var suggestionSpeechJob: Job? = null
+    private var speechGeneration = 0L
 
     init {
         if (models.hasInterruptedImports()) {
@@ -55,6 +61,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
 
     fun record() {
         if (state.value.busy || state.value.recording || recordJob?.isActive == true) return
+        stopSuggestionReading()
         stopPlayback()
         recorder.start()
         _state.update { it.copy(recording = true, status = "Recording…", error = null) }
@@ -78,6 +85,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
                         transcript = "",
                         analysis = null,
                         suggestion = null,
+                        suggestionSpeechError = null,
                         improvement = null,
                         status = "Recording saved on this device.",
                     )
@@ -107,6 +115,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
             stopPlayback()
             return
         }
+        stopSuggestionReading()
         try {
             val newPlayer = MediaPlayer()
             player = newPlayer
@@ -131,6 +140,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
 
     fun deleteRecording() {
         val current = clip ?: return
+        stopSuggestionReading()
         stopPlayback()
         val file = File(current.path)
         if (file.exists() && !file.delete()) {
@@ -143,6 +153,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
             it.copy(
                 hasRecording = false, durationSeconds = 0, transcript = "",
                 analysis = null, suggestion = null, improvement = null,
+                suggestionSpeechError = null,
                 status = "Recording deleted.", error = null,
             )
         }
@@ -203,6 +214,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
                     transcript = result.text,
                     analysis = SpeechAnalyzer.analyze(result.text, current.durationMillis),
                     suggestion = null,
+                    suggestionSpeechError = null,
                     improvement = null,
                 )
             }
@@ -211,11 +223,13 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun editTranscript(text: String) {
+        stopSuggestionReading()
         _state.update {
             it.copy(
                 transcript = text,
                 analysis = clip?.let { current -> SpeechAnalyzer.analyze(text, current.durationMillis) },
                 suggestion = null,
+                suggestionSpeechError = null,
                 improvement = null,
             )
         }
@@ -227,7 +241,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
         runOperation("Generating local suggestions; this may take a while…") {
             val suggestion = GemmaCoach(models.file(LocalModel.COACH), getApplication<Application>().cacheDir)
                 .suggest(snapshot.transcript, report)
-            _state.update { it.copy(suggestion = suggestion, improvement = null) }
+            _state.update { it.copy(suggestion = suggestion, suggestionSpeechError = null, improvement = null) }
             "Suggestions are ready."
         }
     }
@@ -250,8 +264,45 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
         _state.update { it.copy(error = null) }
     }
 
+    fun readSuggestion(text: String) {
+        val snapshot = state.value
+        if (snapshot.suggestion == null || snapshot.busy || snapshot.recording || snapshot.readingSuggestion) return
+        if (text.isBlank()) return
+        stopPlayback()
+        val generation = ++speechGeneration
+        _state.update { it.copy(readingSuggestion = true, suggestionSpeechError = null) }
+        suggestionSpeechJob = viewModelScope.launch {
+            try {
+                speechOutput.speak(text)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("SpeechCoach", "Reading suggestions failed", e)
+                if (speechGeneration == generation) {
+                    _state.update {
+                        it.copy(suggestionSpeechError = "Could not read suggestions: ${e.message ?: e.javaClass.simpleName}")
+                    }
+                }
+            } finally {
+                if (speechGeneration == generation) {
+                    suggestionSpeechJob = null
+                    _state.update { it.copy(readingSuggestion = false) }
+                }
+            }
+        }
+    }
+
+    fun stopSuggestionReading() {
+        speechGeneration++
+        suggestionSpeechJob?.cancel()
+        suggestionSpeechJob = null
+        speechOutput.stop()
+        _state.update { it.copy(readingSuggestion = false) }
+    }
+
     private fun runOperation(label: String, operation: suspend () -> String) {
         if (state.value.busy || state.value.recording) return
+        stopSuggestionReading()
         stopPlayback()
         _state.update { it.copy(busy = true, status = label, progress = null, error = null) }
         viewModelScope.launch {
@@ -285,6 +336,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         recorder.stop()
+        stopSuggestionReading()
         stopPlayback()
         super.onCleared()
     }

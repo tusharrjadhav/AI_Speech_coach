@@ -4,10 +4,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -22,6 +24,7 @@ import com.example.speechcoach.core.TranscriptComparer
 import com.example.speechcoach.ui.PracticeActions
 import com.example.speechcoach.ui.PracticeScreen
 import com.example.speechcoach.ui.PracticeState
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -48,7 +51,8 @@ class TranscriptComparisonUiTest {
                         ),
                         actions = PracticeActions(
                             record = {}, stop = {}, play = {}, delete = {}, openSettings = {}, transcribe = {},
-                            editTranscript = {}, coach = {}, improve = {}, dismissError = {},
+                            editTranscript = {}, coach = {}, improve = {}, readSuggestion = {},
+                            stopSuggestion = {}, dismissError = {},
                         ),
                     )
                 }
@@ -89,7 +93,8 @@ class TranscriptComparisonUiTest {
                         ),
                         actions = PracticeActions(
                             record = {}, stop = {}, play = {}, delete = {}, openSettings = {}, transcribe = {},
-                            editTranscript = {}, coach = {}, improve = {}, dismissError = {},
+                            editTranscript = {}, coach = {}, improve = {}, readSuggestion = {},
+                            stopSuggestion = {}, dismissError = {},
                         ),
                     )
                 }
@@ -99,5 +104,47 @@ class TranscriptComparisonUiTest {
         compose.onNodeWithText("Show more changes (2 remaining)").performScrollTo().performClick()
         compose.onAllNodesWithText("Before").assertCountEquals(5)
         compose.onNodeWithText("violet").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun suggestionReadingControlsFollowStateAndDisplayErrors() {
+        val state = mutableStateOf(PracticeState(suggestion = "Use **clearer** words."))
+        var starts = 0
+        var stops = 0
+        var spokenText: String? = null
+        compose.setContent {
+            MaterialTheme {
+                PracticeScreen(
+                    state = state.value,
+                    actions = PracticeActions(
+                        record = {}, stop = {}, play = {}, delete = {}, openSettings = {}, transcribe = {},
+                        editTranscript = {}, coach = {}, improve = {},
+                        readSuggestion = { text ->
+                            starts++
+                            spokenText = text
+                            state.value = state.value.copy(readingSuggestion = true)
+                        },
+                        stopSuggestion = { stops++; state.value = state.value.copy(readingSuggestion = false) },
+                        dismissError = {},
+                    ),
+                )
+            }
+        }
+        compose.onNodeWithText("Listen to suggestions").performScrollTo().performClick()
+        compose.onNodeWithText("Stop reading").performScrollTo().assertIsDisplayed().performClick()
+        compose.runOnIdle {
+            assertEquals(1, starts)
+            assertEquals(1, stops)
+            assertEquals("Use clearer words.", spokenText)
+            state.value = state.value.copy(
+                busy = true,
+                suggestionSpeechError = "Install an offline voice in text-to-speech settings.",
+            )
+        }
+        compose.onNodeWithText("Listen to suggestions").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Install an offline voice in text-to-speech settings.")
+            .performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { state.value = state.value.copy(busy = false, recording = true) }
+        compose.onNodeWithText("Listen to suggestions").performScrollTo().assertIsNotEnabled()
     }
 }

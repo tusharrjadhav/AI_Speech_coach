@@ -27,9 +27,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.speechcoach.ui.PracticeActions
 import com.example.speechcoach.ui.PracticeScreen
 import com.example.speechcoach.ui.ModelSettingsActions
@@ -37,13 +39,17 @@ import com.example.speechcoach.ui.ModelSettingsScreen
 import com.example.speechcoach.ui.theme.SpeechCoachTheme
 
 class MainActivity : ComponentActivity() {
-    private val viewModel: PracticeViewModel by viewModels()
+    private val viewModel: PracticeViewModel by viewModels {
+        viewModelFactory {
+            initializer { PracticeViewModel(application, AndroidSpeechOutput(application)) }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val state by viewModel.state.collectAsState()
+            val state by viewModel.state.collectAsStateWithLifecycle()
             var showRationale by remember { mutableStateOf(false) }
             var showSettings by remember { mutableStateOf(false) }
             var showTranscriptionConsent by remember { mutableStateOf(false) }
@@ -99,11 +105,16 @@ class MainActivity : ComponentActivity() {
                                     stop = viewModel::stopRecording,
                                     play = viewModel::play,
                                     delete = viewModel::deleteRecording,
-                                    openSettings = { showingModelSettings = true },
+                                    openSettings = {
+                                        viewModel.stopSuggestionReading()
+                                        showingModelSettings = true
+                                    },
                                     transcribe = { showTranscriptionConsent = true },
                                     editTranscript = viewModel::editTranscript,
                                     coach = viewModel::coach,
                                     improve = viewModel::improve,
+                                    readSuggestion = viewModel::readSuggestion,
+                                    stopSuggestion = viewModel::stopSuggestionReading,
                                     dismissError = viewModel::dismissError,
                                 ),
                             )
@@ -169,6 +180,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         viewModel.stopRecording()
+        viewModel.stopSuggestionReading()
         super.onStop()
     }
 }

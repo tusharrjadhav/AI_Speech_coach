@@ -59,6 +59,8 @@ data class PracticeState(
     val progress: Float? = null,
     val error: String? = null,
     val suggestion: String? = null,
+    val readingSuggestion: Boolean = false,
+    val suggestionSpeechError: String? = null,
     val improvement: TranscriptComparison? = null,
 )
 
@@ -72,6 +74,8 @@ data class PracticeActions(
     val editTranscript: (String) -> Unit,
     val coach: () -> Unit,
     val improve: () -> Unit,
+    val readSuggestion: (String) -> Unit,
+    val stopSuggestion: () -> Unit,
     val dismissError: () -> Unit,
 )
 
@@ -227,6 +231,7 @@ private fun LocalSuggestions(state: PracticeState, actions: PracticeActions) {
         state.status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
     state.suggestion?.let { suggestion ->
+        val formattedSuggestion = remember(suggestion) { formatSuggestion(suggestion) }
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             shape = MaterialTheme.shapes.medium,
@@ -234,7 +239,24 @@ private fun LocalSuggestions(state: PracticeState, actions: PracticeActions) {
         ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("AI suggestions", style = MaterialTheme.typography.titleSmall)
-                Text(remember(suggestion) { formatSuggestion(suggestion) })
+                Text(formattedSuggestion)
+                OutlinedButton(
+                    onClick = {
+                        if (state.readingSuggestion) actions.stopSuggestion()
+                        else actions.readSuggestion(formattedSuggestion.text)
+                    },
+                    enabled = state.readingSuggestion ||
+                        (formattedSuggestion.text.isNotBlank() && !state.busy && !state.recording),
+                ) {
+                    Text(if (state.readingSuggestion) "Stop reading" else "Listen to suggestions")
+                }
+                Text(
+                    "Uses an installed offline voice. Your device's text-to-speech engine's privacy settings apply.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                state.suggestionSpeechError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
                 Text(
                     "Experimental: check the advice before using it.",
                     style = MaterialTheme.typography.bodySmall,
