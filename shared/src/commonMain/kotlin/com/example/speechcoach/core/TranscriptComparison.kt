@@ -13,6 +13,8 @@ data class TranscriptComparison(
     val approximate: Boolean,
 )
 
+data class SuggestedEdit(val before: String?, val after: String?)
+
 object TranscriptComparer {
     private val tokens = Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*|\\s+|[^\\p{L}\\p{N}\\s]+")
     private const val MAX_MATRIX_CELLS = 2_000_000L
@@ -91,6 +93,50 @@ object TranscriptComparer {
             changes.add(before[before.size - index], TranscriptChange.UNCHANGED)
         }
         return TranscriptComparison(originalSpans.build(), improvedSpans.build(), changes.build(), approximate)
+    }
+
+    fun suggestedEdits(comparison: TranscriptComparison): List<SuggestedEdit> {
+        val edits = mutableListOf<SuggestedEdit>()
+        val before = StringBuilder()
+        val after = StringBuilder()
+        var hasRemoved = false
+        var hasAdded = false
+
+        fun finishEdit() {
+            if (hasRemoved || hasAdded) {
+                edits.add(SuggestedEdit(before.toString().takeIf { hasRemoved }, after.toString().takeIf { hasAdded }))
+                before.clear()
+                after.clear()
+                hasRemoved = false
+                hasAdded = false
+            }
+        }
+
+        comparison.changes.forEachIndexed { index, span ->
+            when (span.change) {
+                TranscriptChange.REMOVED -> {
+                    before.append(span.text)
+                    hasRemoved = true
+                }
+                TranscriptChange.ADDED -> {
+                    after.append(span.text)
+                    hasAdded = true
+                }
+                TranscriptChange.UNCHANGED -> {
+                    if (
+                        (hasRemoved || hasAdded) && span.text.all { it.isWhitespace() } &&
+                        comparison.changes.getOrNull(index + 1)?.changed == true
+                    ) {
+                        before.append(span.text)
+                        after.append(span.text)
+                    } else {
+                        finishEdit()
+                    }
+                }
+            }
+        }
+        finishEdit()
+        return edits
     }
 
     private class SpanBuilder {

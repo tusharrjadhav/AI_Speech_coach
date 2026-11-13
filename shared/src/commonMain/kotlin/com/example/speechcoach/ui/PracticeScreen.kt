@@ -3,6 +3,7 @@ package com.example.speechcoach.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,10 +15,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,13 +30,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.example.speechcoach.core.DeliveryAnalysis
+import com.example.speechcoach.core.SuggestedEdit
 import com.example.speechcoach.core.TranscriptChange
+import com.example.speechcoach.core.TranscriptComparer
 import com.example.speechcoach.core.TranscriptComparison
 
 data class PracticeState(
@@ -192,34 +201,86 @@ private fun ResultsCard(state: PracticeState, actions: PracticeActions) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            OutlinedButton(
-                onClick = actions.coach,
-                enabled = state.coachModelReady && state.analysis != null &&
-                    state.transcript.isNotBlank() && !state.busy && !state.recording,
-            ) { Text("Get optional local suggestions") }
-            if (state.busy) {
-                state.status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            }
-            state.suggestion?.let {
-                Text("AI suggestions (experimental)", style = MaterialTheme.typography.titleMedium)
-                Text(it)
-                Text("Check suggestions: the model cannot hear your delivery.", style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(
-                    onClick = actions.improve,
-                    enabled = !state.busy && !state.recording,
-                ) { Text("Create improved transcript") }
-            }
-            state.improvement?.let { TranscriptComparisonView(it) }
+            LocalSuggestions(state, actions)
             Spacer(Modifier.padding(2.dp))
         }
     }
 }
 
 @Composable
+private fun LocalSuggestions(state: PracticeState, actions: PracticeActions) {
+    HorizontalDivider(Modifier.padding(vertical = 4.dp))
+    Text("Local coaching", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Get wording suggestions from Gemma. It reads your transcript, not the recording.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (!state.coachModelReady) {
+        Text("Install Gemma in Model settings to use local coaching.", style = MaterialTheme.typography.bodySmall)
+    }
+    OutlinedButton(
+        onClick = actions.coach,
+        enabled = state.coachModelReady && state.analysis != null &&
+            state.transcript.isNotBlank() && !state.busy && !state.recording,
+    ) { Text("Get local suggestions") }
+    if (state.busy) {
+        state.status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    }
+    state.suggestion?.let { suggestion ->
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("AI suggestions", style = MaterialTheme.typography.titleSmall)
+                Text(remember(suggestion) { formatSuggestion(suggestion) })
+                Text(
+                    "Experimental: check the advice before using it.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        Text(
+            "Create an improved version to highlight suggested word changes.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(
+            onClick = actions.improve,
+            enabled = !state.busy && !state.recording,
+        ) { Text("Create improved transcript") }
+    }
+    state.improvement?.let { TranscriptComparisonView(it) }
+}
+
+private fun formatSuggestion(text: String): AnnotatedString = buildAnnotatedString {
+    var start = 0
+    while (start < text.length) {
+        val open = text.indexOf("**", start)
+        if (open < 0) {
+            append(text.substring(start))
+            break
+        }
+        val close = text.indexOf("**", open + 2)
+        if (close < 0 || close == open + 2) {
+            append(text.substring(start))
+            break
+        }
+        append(text.substring(start, open))
+        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(text.substring(open + 2, close)) }
+        start = close + 2
+    }
+}
+
+@Composable
 private fun TranscriptComparisonView(comparison: TranscriptComparison) {
     var view by remember(comparison) { mutableStateOf(ComparisonView.CHANGES) }
+    var visibleEdits by remember(comparison) { mutableStateOf(3) }
+    val edits = remember(comparison) {
+        if (comparison.approximate) emptyList() else TranscriptComparer.suggestedEdits(comparison)
+    }
     Text("Compare transcripts", style = MaterialTheme.typography.titleMedium)
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         FilterChip(
             selected = view == ComparisonView.CHANGES,
             onClick = { view = ComparisonView.CHANGES },
@@ -236,14 +297,29 @@ private fun TranscriptComparisonView(comparison: TranscriptComparison) {
             label = { Text("Improved") },
         )
     }
-    val removedColor = MaterialTheme.colorScheme.error
-    val addedColor = MaterialTheme.colorScheme.primary
+    if (view == ComparisonView.CHANGES && !comparison.approximate) {
+        if (edits.isEmpty()) {
+            Text("No wording changes suggested.", style = MaterialTheme.typography.bodyMedium)
+        } else {
+            Text("Suggested changes", style = MaterialTheme.typography.titleSmall)
+            edits.take(visibleEdits).forEach { SuggestedEditCard(it) }
+            if (visibleEdits < edits.size) {
+                TextButton(onClick = { visibleEdits += 3 }) {
+                    Text("Show more changes (${edits.size - visibleEdits} remaining)")
+                }
+            }
+        }
+    }
+    val removedColor = MaterialTheme.colorScheme.onErrorContainer
+    val removedBackground = MaterialTheme.colorScheme.errorContainer
+    val addedColor = MaterialTheme.colorScheme.onSecondaryContainer
+    val addedBackground = MaterialTheme.colorScheme.secondaryContainer
     val spans = when (view) {
         ComparisonView.CHANGES -> comparison.changes
         ComparisonView.ORIGINAL -> comparison.original
         ComparisonView.IMPROVED -> comparison.improved
     }
-    val text = remember(spans, removedColor, addedColor, view) {
+    val text = remember(spans, removedColor, removedBackground, addedColor, addedBackground, view) {
         buildAnnotatedString {
             spans.forEachIndexed { index, span ->
                 val previous = spans.getOrNull(index - 1)
@@ -256,11 +332,24 @@ private fun TranscriptComparisonView(comparison: TranscriptComparison) {
                 }
                 when (span.change) {
                     TranscriptChange.REMOVED ->
-                        withStyle(SpanStyle(color = removedColor, textDecoration = TextDecoration.LineThrough)) {
+                        withStyle(
+                            SpanStyle(
+                                color = removedColor,
+                                background = removedBackground,
+                                textDecoration = TextDecoration.LineThrough,
+                            )
+                        ) {
                             append(span.text)
                         }
                     TranscriptChange.ADDED ->
-                        withStyle(SpanStyle(color = addedColor, textDecoration = TextDecoration.Underline)) {
+                        withStyle(
+                            SpanStyle(
+                                color = addedColor,
+                                background = addedBackground,
+                                fontWeight = FontWeight.SemiBold,
+                                textDecoration = TextDecoration.Underline,
+                            )
+                        ) {
                             append(span.text)
                         }
                     TranscriptChange.UNCHANGED -> append(span.text)
@@ -269,7 +358,21 @@ private fun TranscriptComparisonView(comparison: TranscriptComparison) {
         }
     }
     if (view == ComparisonView.CHANGES) {
-        Text(text, modifier = Modifier.testTag("transcript-comparison-text"))
+        val spoken = remember(spans) {
+            spans.joinToString("") { span ->
+                when (span.change) {
+                    TranscriptChange.REMOVED -> " Removed: ${span.text}. "
+                    TranscriptChange.ADDED -> " Added: ${span.text}. "
+                    TranscriptChange.UNCHANGED -> span.text
+                }
+            }
+        }
+        Text(
+            text,
+            modifier = Modifier.testTag("transcript-comparison-text").clearAndSetSemantics {
+                contentDescription = spoken
+            },
+        )
     } else {
         SelectionContainer {
             Text(text, modifier = Modifier.testTag("transcript-comparison-text"))
@@ -285,6 +388,65 @@ private fun TranscriptComparisonView(comparison: TranscriptComparison) {
             "For this long comparison, highlighting is approximate.",
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+@Composable
+private fun SuggestedEditCard(edit: SuggestedEdit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            EditText(
+                label = "Before",
+                text = edit.before,
+                change = TranscriptChange.REMOVED,
+                modifier = Modifier.weight(1f),
+            )
+            EditText(
+                label = "After",
+                text = edit.after,
+                change = TranscriptChange.ADDED,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditText(label: String, text: String?, change: TranscriptChange, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium)
+        if (text == null) {
+            Text("No text", style = MaterialTheme.typography.bodyMedium)
+        } else {
+            val isRemoved = change == TranscriptChange.REMOVED
+            Surface(
+                color = if (isRemoved) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = if (isRemoved) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                shape = MaterialTheme.shapes.extraSmall,
+            ) {
+                Text(
+                    displayEditText(text),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textDecoration = if (isRemoved) TextDecoration.LineThrough else TextDecoration.Underline,
+                    fontWeight = if (isRemoved) FontWeight.Normal else FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}
+
+private fun displayEditText(text: String): String {
+    if (text.isNotBlank()) return text.trim()
+    return when {
+        text.all { it == ' ' } -> if (text.length == 1) "Space" else "${text.length} spaces"
+        text.all { it == '\n' } -> if (text.length == 1) "Line break" else "${text.length} line breaks"
+        text.all { it == '\t' } -> if (text.length == 1) "Tab" else "${text.length} tabs"
+        else -> "Whitespace"
     }
 }
 

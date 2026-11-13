@@ -62,8 +62,10 @@ important details, or change your meaning even when instructed not to. Review
 every proposed change. Gemma receives the transcript and
 its text advice, not the recording. Local coaching accepts transcripts of up
 to 6,000 characters; longer transcripts must be shortened explicitly.
-The comparison highlights removed and added text; for exceptionally long
-changes, it may highlight a larger region and will say so.
+The comparison highlights removed and added text and lists suggested wording
+as before/after pairs. These are AI proposals, not verified transcription
+corrections. For exceptionally long changes, the comparison may highlight a
+larger region and will say so.
 The transcription adapter uses interim results to remove some duplicated
 segment-boundary words and adds a short silent tail for decoding. It does not
 deduplicate words indiscriminately: genuine repetitions matter for coaching.

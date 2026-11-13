@@ -35,6 +35,40 @@ class TranscriptComparerTest {
     }
 
     @Test
+    fun groupsReplacementWordsAndKeepsSeparateEdits() {
+        val comparison = TranscriptComparer.compare(
+            "We finished the launch on time and shared the report.",
+            "We finished the launch early and sent the report.",
+        )
+        val edits = TranscriptComparer.suggestedEdits(comparison)
+        assertEquals(2, edits.size)
+        assertEquals("on time", edits[0].before?.trim())
+        assertEquals("early", edits[0].after?.trim())
+        assertEquals("shared", edits[1].before?.trim())
+        assertEquals("sent", edits[1].after?.trim())
+    }
+
+    @Test
+    fun distinguishesInsertedAndRemovedText() {
+        val insertion = TranscriptComparer.suggestedEdits(TranscriptComparer.compare("Hello!", "Hello there!"))
+        assertEquals(null, insertion.single().before)
+        assertEquals("there", insertion.single().after?.trim())
+        val removal = TranscriptComparer.suggestedEdits(TranscriptComparer.compare("Hello there!", "Hello!"))
+        assertEquals("there", removal.single().before?.trim())
+        assertEquals(null, removal.single().after)
+        assertTrue(TranscriptComparer.suggestedEdits(TranscriptComparer.compare("Same.", "Same.")).isEmpty())
+    }
+
+    @Test
+    fun keepsWhitespaceOnlyEditsDistinguishable() {
+        val edit = TranscriptComparer.suggestedEdits(
+            TranscriptComparer.compare("Hello  world", "Hello\tworld")
+        ).single()
+        assertEquals("  ", edit.before)
+        assertEquals("\t", edit.after)
+    }
+
+    @Test
     fun marksRepeatedWordsAndPunctuationSeparately() {
         val original = "I I can do this."
         val improved = "I can do this!"
