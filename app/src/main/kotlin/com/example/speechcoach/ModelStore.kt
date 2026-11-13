@@ -4,8 +4,11 @@ import android.content.Context
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -45,8 +48,72 @@ class ModelStore(private val directory: File) {
 
     fun isReady(model: LocalModel): Boolean = file(model).isFile && file(model).length() == model.size
 
+    fun hasInterruptedImports(): Boolean = LocalModel.entries.any { importFile(it.fileName).exists() }
+
+    suspend fun removeInterruptedImports() = withContext(Dispatchers.IO) {
+        LocalModel.entries.forEach { model ->
+            val temporary = importFile(model.fileName)
+            if (temporary.exists() && !temporary.delete()) {
+                throw IOException("Could not remove an interrupted ${model.label} import.")
+            }
+        }
+    }
+
+    private fun importFile(fileName: String): File = File(directory, "$fileName.import")
+
     suspend fun download(model: LocalModel, progress: (Long, Long) -> Unit) =
         downloadFile(model.fileName, model.size, model.sha256, model.url, progress)
+
+    suspend fun import(model: LocalModel, open: () -> InputStream?, progress: (Long, Long) -> Unit) =
+        importFile(model.fileName, model.size, model.sha256, open, progress)
+
+    internal suspend fun importFile(
+        fileName: String,
+        size: Long,
+        sha256: String,
+        open: () -> InputStream?,
+        progress: (Long, Long) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        val temporary = importFile(fileName)
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            val source = open() ?: throw IOException("Could not open the selected file.")
+            source.use { input ->
+                temporary.outputStream().use { output ->
+                    val buffer = ByteArray(128 * 1024)
+                    var total = 0L
+                    var lastReported = 0L
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > size) throw IOException("The selected file is larger than the supported model.")
+                        output.write(buffer, 0, count)
+                        digest.update(buffer, 0, count)
+                        if (total - lastReported >= 512 * 1024 || total == size) {
+                            progress(total, size)
+                            lastReported = total
+                        }
+                    }
+                    if (total != size) throw IOException("The selected file does not match the supported model size.")
+                }
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it) }
+            if (actual != sha256) throw IOException("The selected file does not match the supported model checksum.")
+            coroutineContext.ensureActive()
+            Files.move(
+                temporary.toPath(),
+                File(directory, fileName).toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } finally {
+            if (temporary.exists() && !temporary.delete()) {
+                throw IOException("Could not remove the temporary imported model.")
+            }
+        }
+    }
 
     internal suspend fun downloadFile(
         fileName: String,

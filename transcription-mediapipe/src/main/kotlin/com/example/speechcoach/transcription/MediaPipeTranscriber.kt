@@ -4,8 +4,8 @@ import android.content.Context
 import com.example.speechcoach.core.AudioClip
 import com.example.speechcoach.core.SpeechTranscriber
 import com.example.speechcoach.core.Transcript
-import com.example.speechcoach.core.TranscriptSegment
 import com.google.mediapipe.tasks.audio.audiotranscriber.AudioTranscriber
+import com.google.mediapipe.tasks.audio.audiotranscriber.AudioTranscriberResult
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
 import java.io.File
@@ -32,11 +32,22 @@ class MediaPipeTranscriber(
             .setModelArchitecture(AudioTranscriber.ModelArchitecture.AUTO)
             .setCacheDir(context.cacheDir.absolutePath)
             .build()
-        val segments = mutableListOf<TranscriptSegment>()
+        val assembler = TranscriptAssembler()
         AudioTranscriber.createFromOptions(context, options).use { transcriber ->
             transcriber.prewarm()
             RandomAccessFile(clip.path, "r").use { audio ->
                 require(audio.length() > 44) { "The recording is empty." }
+                val durationMillis = (audio.length() - 44) / 2 * 1_000 / 16_000
+                fun accept(result: AudioTranscriberResult) {
+                    result.segments().forEach {
+                        assembler.accept(
+                            it.transcript(),
+                            it.fromTimestampMs().coerceAtMost(durationMillis),
+                            it.toTimestampMs().coerceAtMost(durationMillis),
+                            it.isFinal,
+                        )
+                    }
+                }
                 audio.seek(44)
                 val bytes = ByteArray(8_000 * 2)
                 while (audio.filePointer < audio.length()) {
@@ -48,16 +59,14 @@ class MediaPipeTranscriber(
                         val value = (bytes[2 * i].toInt() and 0xff) or (bytes[2 * i + 1].toInt() shl 8)
                         value.toShort() / 32768f
                     }
-                    val result = transcriber.transcribe(samples, audio.filePointer == audio.length())
-                    result.segments().filter { it.isFinal }.forEach {
-                        segments.add(TranscriptSegment(it.transcript(), it.fromTimestampMs(), it.toTimestampMs()))
-                    }
+                    accept(transcriber.transcribe(samples))
                 }
-                transcriber.finishStream().segments().filter { it.isFinal }.forEach {
-                    segments.add(TranscriptSegment(it.transcript(), it.fromTimestampMs(), it.toTimestampMs()))
-                }
+                // Give the decoder a short pause after speech that ends with the recording.
+                coroutineContext.ensureActive()
+                accept(transcriber.transcribe(FloatArray(4_800)))
+                accept(transcriber.finishStream())
             }
         }
-        Transcript(segments.joinToString(" ") { it.text.trim() }.trim(), segments)
+        assembler.result()
     }
 }

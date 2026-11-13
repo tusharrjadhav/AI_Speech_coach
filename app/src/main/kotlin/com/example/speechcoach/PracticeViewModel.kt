@@ -2,6 +2,7 @@ package com.example.speechcoach
 
 import android.app.Application
 import android.media.MediaPlayer
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -41,6 +42,15 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
     val state = _state.asStateFlow()
     private var recordJob: Job? = null
     private var player: MediaPlayer? = null
+
+    init {
+        if (models.hasInterruptedImports()) {
+            runOperation("Removing interrupted model imports…") {
+                models.removeInterruptedImports()
+                "Interrupted model imports were removed."
+            }
+        }
+    }
 
     fun record() {
         if (state.value.busy || state.value.recording || recordJob?.isActive == true) return
@@ -136,10 +146,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun download(model: LocalModel) {
-        if (model == LocalModel.COACH && !android.os.Process.is64Bit()) {
-            reportError("Gemma 4 is unavailable", IllegalStateException("A 64-bit device is required."))
-            return
-        }
+        if (!isModelSupported(model)) return
         runOperation("Downloading ${model.label}…") {
             models.download(model) { complete, total ->
                 _state.update {
@@ -149,13 +156,37 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
                     )
                 }
             }
-            _state.update {
-                it.copy(
-                    speechModelReady = models.isReady(LocalModel.SPEECH),
-                    coachModelReady = models.isReady(LocalModel.COACH),
-                )
-            }
+            updateModelReadiness()
             "${model.label} model is ready."
+        }
+    }
+
+    fun importModel(model: LocalModel, uri: Uri) {
+        if (!isModelSupported(model)) return
+        runOperation("Importing ${model.label}…") {
+            require(uri.scheme == "content") { "Select a file using the system file picker." }
+            models.import(model, { getApplication<Application>().contentResolver.openInputStream(uri) }) { complete, total ->
+                _state.update { it.copy(progress = complete.toFloat() / total) }
+            }
+            updateModelReadiness()
+            "${model.label} model is ready."
+        }
+    }
+
+    private fun isModelSupported(model: LocalModel): Boolean {
+        if (model == LocalModel.COACH && !android.os.Process.is64Bit()) {
+            reportError("Gemma 4 is unavailable", IllegalStateException("A 64-bit device is required."))
+            return false
+        }
+        return true
+    }
+
+    private fun updateModelReadiness() {
+        _state.update {
+            it.copy(
+                speechModelReady = models.isReady(LocalModel.SPEECH),
+                coachModelReady = models.isReady(LocalModel.COACH),
+            )
         }
     }
 

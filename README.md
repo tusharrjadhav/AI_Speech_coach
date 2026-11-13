@@ -20,12 +20,22 @@ recording can be played or deleted. A new successful recording replaces the
 previous one. The transcript is editable during a session but is not yet saved
 across app restarts.
 
-The app does not download models automatically. On a suitable device, choose:
+Open **Model settings** to download a model or browse for an existing local
+`.litertlm` file. The app does not download models automatically. On a suitable
+device, choose:
 
 - **Speech recognition:** 615 MB, required for MediaPipe transcription.
 - **Gemma 4 coaching:** 2.59 GB, optional; requires substantial RAM and can be
   slow or unsupported on a given device. Its runtime is packaged for 64-bit
   ARM and x86 devices only. Basic recording and analysis do not depend on it.
+
+The picker accepts only the exact pinned files listed on the settings screen;
+other model versions or formats are not supported. Imported files are copied to
+app-private storage and checked against the same size and SHA-256 as downloads.
+You need free space for the copy, even if the original already exists on the
+device. A failed import does not replace an installed model or interrupt a
+partially downloaded one. An import interrupted by app termination is removed
+when the app next starts.
 
 Downloads use HTTPS, support retrying partial downloads, and are SHA-256 verified
 before use. Hugging Face receives the normal network request when downloading.
@@ -45,6 +55,10 @@ Possible filler counts currently match the English words “um” and “uh” i
 transcript, not the audio. Recognition may omit or invent fillers, so a zero
 count does not prove that none were spoken. Edit the transcript to recalculate
 the estimates; AI suggestions can also be wrong.
+The transcription adapter uses interim results to remove some duplicated
+segment-boundary words and adds a short silent tail for decoding. It does not
+deduplicate words indiscriminately: genuine repetitions matter for coaching.
+Recognition and boundary merging can still be wrong, so review the transcript.
 
 ## Structure
 
@@ -59,9 +73,12 @@ the estimates; AI suggestions can also be wrong.
 Adapters implement interfaces in `shared`, so other speech recognition and
 coaching implementations can be added without changing the analysis rules.
 The iOS and desktop targets are foundations, not finished applications.
+Module plugin and library versions are managed in `gradle/libs.versions.toml`;
+the settings-level toolchain resolver is declared in `settings.gradle.kts`
+because Gradle does not support catalog plugin aliases there.
 
-Run the analysis and model-download tests with
-`./gradlew :shared:desktopTest :app:testDebugUnitTest`.
+Run the analysis, transcription-merge, and model-download tests with
+`./gradlew :shared:desktopTest :transcription-mediapipe:testDebugUnitTest :app:testDebugUnitTest`.
 
 ## Model attribution
 

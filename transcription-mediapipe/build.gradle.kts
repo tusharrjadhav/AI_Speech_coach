@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.library")
+    alias(libs.plugins.android.library)
 }
 
 android {
@@ -14,6 +14,7 @@ android {
 
 dependencies {
     implementation(project(":shared"))
-    implementation("com.google.mediapipe:tasks-audio:1.2.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation(libs.mediapipe.tasks.audio)
+    implementation(libs.kotlinx.coroutines.android)
+    testImplementation(libs.junit)
 }

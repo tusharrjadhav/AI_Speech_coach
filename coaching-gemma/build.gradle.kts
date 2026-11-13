@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.library")
+    alias(libs.plugins.android.library)
 }
 
 android {
@@ -14,6 +14,6 @@ android {
 
 dependencies {
     implementation(project(":shared"))
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.16.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation(libs.litertlm.android)
+    implementation(libs.kotlinx.coroutines.android)
 }

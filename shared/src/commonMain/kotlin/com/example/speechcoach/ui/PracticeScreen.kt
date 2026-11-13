@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -43,10 +44,9 @@ data class PracticeActions(
     val stop: () -> Unit,
     val play: () -> Unit,
     val delete: () -> Unit,
-    val downloadSpeech: () -> Unit,
+    val openSettings: () -> Unit,
     val transcribe: () -> Unit,
     val editTranscript: (String) -> Unit,
-    val downloadCoach: () -> Unit,
     val coach: () -> Unit,
     val dismissError: () -> Unit,
 )
@@ -61,7 +61,7 @@ fun PracticeScreen(state: PracticeState, actions: PracticeActions) {
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
             ) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                    Header()
+                    Header(actions.openSettings)
                     RecordingCard(state, actions)
                     ModelCard(state, actions)
                 }
@@ -74,7 +74,7 @@ fun PracticeScreen(state: PracticeState, actions: PracticeActions) {
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Header()
+                Header(actions.openSettings)
                 RecordingCard(state, actions)
                 ModelCard(state, actions)
                 ResultsCard(state, actions)
@@ -84,13 +84,14 @@ fun PracticeScreen(state: PracticeState, actions: PracticeActions) {
 }
 
 @Composable
-private fun Header() {
+private fun Header(openSettings: () -> Unit) {
     Text("Speech Coach", style = MaterialTheme.typography.headlineMedium)
     Text(
         "Practice privately, review your words, and try again.",
         style = MaterialTheme.typography.bodyLarge,
         modifier = Modifier.padding(vertical = 8.dp),
     )
+    TextButton(onClick = openSettings) { Text("Model settings") }
 }
 
 @Composable
@@ -125,35 +126,26 @@ private fun ModelCard(state: PracticeState, actions: PracticeActions) {
     Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("2. On-device models", style = MaterialTheme.typography.titleLarge)
-            Text("Models download from Hugging Face only when you choose. Wi-Fi and free storage are recommended.")
-            Text(if (state.speechModelReady) "Speech model ready" else "Speech model: 615 MB")
-            if (!state.speechModelReady) {
-                OutlinedButton(onClick = actions.downloadSpeech, enabled = !state.busy && !state.recording) {
-                    Text("Download speech model")
-                }
+            Text(if (state.speechModelReady) "Speech model ready" else "Speech model not installed")
+            Text(if (state.coachModelReady) "Gemma 4 ready" else "Optional Gemma 4 not installed")
+            OutlinedButton(onClick = actions.openSettings) {
+                Text("Manage models")
             }
-            Text(if (state.coachModelReady) "Gemma 4 ready" else "Optional Gemma 4: 2.59 GB; requires a capable 64-bit device")
-            if (!state.coachModelReady) {
-                OutlinedButton(onClick = actions.downloadCoach, enabled = !state.busy && !state.recording) {
-                    Text("Download Gemma 4")
-                }
-            }
-            Text(
-                "Speech model: NVIDIA Parakeet-TDT-0.6B-v3, quantized by LiteRT Community. " +
-                    "CC BY 4.0: creativecommons.org/licenses/by/4.0/; model: " +
-                    "huggingface.co/litert-community/parakeet-tdt-0.6b-v3",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            state.status?.let { Text(it) }
-            state.progress?.let { progress ->
-                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                Text("${(progress * 100).toInt()}%")
-            }
-            state.error?.let { error ->
-                Text(error, color = MaterialTheme.colorScheme.error)
-                OutlinedButton(onClick = actions.dismissError) { Text("Dismiss error") }
-            }
+            OperationStatus(state, actions.dismissError)
         }
+    }
+}
+
+@Composable
+internal fun OperationStatus(state: PracticeState, dismissError: () -> Unit) {
+    state.status?.let { Text(it) }
+    state.progress?.let { progress ->
+        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        Text("${(progress * 100).toInt()}%")
+    }
+    state.error?.let { error ->
+        Text(error, color = MaterialTheme.colorScheme.error)
+        OutlinedButton(onClick = dismissError) { Text("Dismiss error") }
     }
 }
 
