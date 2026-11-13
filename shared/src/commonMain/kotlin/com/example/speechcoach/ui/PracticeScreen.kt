@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -19,9 +21,20 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.example.speechcoach.core.DeliveryAnalysis
+import com.example.speechcoach.core.TranscriptChange
+import com.example.speechcoach.core.TranscriptComparison
 
 data class PracticeState(
     val recording: Boolean = false,
@@ -37,6 +50,7 @@ data class PracticeState(
     val progress: Float? = null,
     val error: String? = null,
     val suggestion: String? = null,
+    val improvement: TranscriptComparison? = null,
 )
 
 data class PracticeActions(
@@ -48,6 +62,7 @@ data class PracticeActions(
     val transcribe: () -> Unit,
     val editTranscript: (String) -> Unit,
     val coach: () -> Unit,
+    val improve: () -> Unit,
     val dismissError: () -> Unit,
 )
 
@@ -182,12 +197,95 @@ private fun ResultsCard(state: PracticeState, actions: PracticeActions) {
                 enabled = state.coachModelReady && state.analysis != null &&
                     state.transcript.isNotBlank() && !state.busy && !state.recording,
             ) { Text("Get optional local suggestions") }
+            if (state.busy) {
+                state.status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
             state.suggestion?.let {
                 Text("AI suggestions (experimental)", style = MaterialTheme.typography.titleMedium)
                 Text(it)
                 Text("Check suggestions: the model cannot hear your delivery.", style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(
+                    onClick = actions.improve,
+                    enabled = !state.busy && !state.recording,
+                ) { Text("Create improved transcript") }
             }
+            state.improvement?.let { TranscriptComparisonView(it) }
             Spacer(Modifier.padding(2.dp))
         }
     }
 }
+
+@Composable
+private fun TranscriptComparisonView(comparison: TranscriptComparison) {
+    var view by remember(comparison) { mutableStateOf(ComparisonView.CHANGES) }
+    Text("Compare transcripts", style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        FilterChip(
+            selected = view == ComparisonView.CHANGES,
+            onClick = { view = ComparisonView.CHANGES },
+            label = { Text("Changes") },
+        )
+        FilterChip(
+            selected = view == ComparisonView.ORIGINAL,
+            onClick = { view = ComparisonView.ORIGINAL },
+            label = { Text("Original") },
+        )
+        FilterChip(
+            selected = view == ComparisonView.IMPROVED,
+            onClick = { view = ComparisonView.IMPROVED },
+            label = { Text("Improved") },
+        )
+    }
+    val removedColor = MaterialTheme.colorScheme.error
+    val addedColor = MaterialTheme.colorScheme.primary
+    val spans = when (view) {
+        ComparisonView.CHANGES -> comparison.changes
+        ComparisonView.ORIGINAL -> comparison.original
+        ComparisonView.IMPROVED -> comparison.improved
+    }
+    val text = remember(spans, removedColor, addedColor, view) {
+        buildAnnotatedString {
+            spans.forEachIndexed { index, span ->
+                val previous = spans.getOrNull(index - 1)
+                if (
+                    view == ComparisonView.CHANGES && previous != null &&
+                    previous.changed && span.changed && previous.change != span.change &&
+                    !previous.text.last().isWhitespace() && !span.text.first().isWhitespace()
+                ) {
+                    append(" ")
+                }
+                when (span.change) {
+                    TranscriptChange.REMOVED ->
+                        withStyle(SpanStyle(color = removedColor, textDecoration = TextDecoration.LineThrough)) {
+                            append(span.text)
+                        }
+                    TranscriptChange.ADDED ->
+                        withStyle(SpanStyle(color = addedColor, textDecoration = TextDecoration.Underline)) {
+                            append(span.text)
+                        }
+                    TranscriptChange.UNCHANGED -> append(span.text)
+                }
+            }
+        }
+    }
+    if (view == ComparisonView.CHANGES) {
+        Text(text, modifier = Modifier.testTag("transcript-comparison-text"))
+    } else {
+        SelectionContainer {
+            Text(text, modifier = Modifier.testTag("transcript-comparison-text"))
+        }
+    }
+    Text(
+        "Struck-through text was removed; underlined text was added. Check changes carefully: " +
+            "Gemma can remove important details. The original above is never replaced.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (comparison.approximate) {
+        Text(
+            "For this long comparison, highlighting is approximate.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+private enum class ComparisonView { CHANGES, ORIGINAL, IMPROVED }

@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.speechcoach.coaching.GemmaCoach
 import com.example.speechcoach.core.AudioClip
 import com.example.speechcoach.core.SpeechAnalyzer
+import com.example.speechcoach.core.TranscriptComparer
 import com.example.speechcoach.transcription.MediaPipeTranscriber
 import com.example.speechcoach.ui.PracticeState
 import java.io.File
@@ -77,6 +78,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
                         transcript = "",
                         analysis = null,
                         suggestion = null,
+                        improvement = null,
                         status = "Recording saved on this device.",
                     )
                 }
@@ -140,7 +142,8 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
         _state.update {
             it.copy(
                 hasRecording = false, durationSeconds = 0, transcript = "",
-                analysis = null, suggestion = null, status = "Recording deleted.", error = null,
+                analysis = null, suggestion = null, improvement = null,
+                status = "Recording deleted.", error = null,
             )
         }
     }
@@ -200,6 +203,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
                     transcript = result.text,
                     analysis = SpeechAnalyzer.analyze(result.text, current.durationMillis),
                     suggestion = null,
+                    improvement = null,
                 )
             }
             "Transcript ready. Review and correct it before using the estimates."
@@ -212,6 +216,7 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
                 transcript = text,
                 analysis = clip?.let { current -> SpeechAnalyzer.analyze(text, current.durationMillis) },
                 suggestion = null,
+                improvement = null,
             )
         }
     }
@@ -222,8 +227,22 @@ class PracticeViewModel(application: Application) : AndroidViewModel(application
         runOperation("Generating local suggestions; this may take a while…") {
             val suggestion = GemmaCoach(models.file(LocalModel.COACH), getApplication<Application>().cacheDir)
                 .suggest(snapshot.transcript, report)
-            _state.update { it.copy(suggestion = suggestion) }
+            _state.update { it.copy(suggestion = suggestion, improvement = null) }
             "Suggestions are ready."
+        }
+    }
+
+    fun improve() {
+        val snapshot = state.value
+        val advice = snapshot.suggestion ?: return
+        runOperation("Creating an improved transcript; this may take a while…") {
+            val improved = GemmaCoach(models.file(LocalModel.COACH), getApplication<Application>().cacheDir)
+                .improve(snapshot.transcript, advice)
+            val comparison = withContext(Dispatchers.Default) {
+                TranscriptComparer.compare(snapshot.transcript, improved)
+            }
+            _state.update { it.copy(improvement = comparison) }
+            "Improved transcript ready. Review the changes before using it."
         }
     }
 

@@ -22,6 +22,10 @@ interface SpeechCoach {
     suspend fun suggest(transcript: String, analysis: DeliveryAnalysis): String
 }
 
+interface TranscriptImprover {
+    suspend fun improve(transcript: String, advice: String): String
+}
+
 object SpeechAnalyzer {
     private val words = Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*")
     private val fillerWords = setOf("um", "uh")

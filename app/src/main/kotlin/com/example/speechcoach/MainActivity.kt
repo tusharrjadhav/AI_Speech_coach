@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity() {
                                     transcribe = { showTranscriptionConsent = true },
                                     editTranscript = viewModel::editTranscript,
                                     coach = viewModel::coach,
+                                    improve = viewModel::improve,
                                     dismissError = viewModel::dismissError,
                                 ),
                             )

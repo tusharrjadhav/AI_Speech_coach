@@ -3,7 +3,9 @@
 An Android-first, local speech-practice experiment. Record up to two minutes, play
 back the recording, transcribe it on device, edit the transcript, and review
 estimated pace and possible fillers. Optional Gemma 4 suggestions focus on the
-transcript's wording, not how the speaker sounded.
+transcript's wording, not how the speaker sounded. After receiving suggestions,
+you can ask Gemma for an improved transcript and compare it with the original;
+the original is never replaced automatically.
 
 ## Run on Android
 
@@ -18,7 +20,8 @@ Android 9 (API 28) or newer is required. Grant microphone access when starting
 a recording. Recording stops when the app leaves the screen; the latest completed
 recording can be played or deleted. A new successful recording replaces the
 previous one. The transcript is editable during a session but is not yet saved
-across app restarts.
+across app restarts. Editing it clears any suggestions and comparison so they
+cannot refer to an outdated transcript.
 
 Open **Model settings** to download a model or browse for an existing local
 `.litertlm` file. The app does not download models automatically. On a suitable
@@ -54,7 +57,13 @@ by the entire recording duration, including silence.
 Possible filler counts currently match the English words “um” and “uh” in the
 transcript, not the audio. Recognition may omit or invent fillers, so a zero
 count does not prove that none were spoken. Edit the transcript to recalculate
-the estimates; AI suggestions can also be wrong.
+the estimates; AI suggestions and rewritten text can also be wrong, remove
+important details, or change your meaning even when instructed not to. Review
+every proposed change. Gemma receives the transcript and
+its text advice, not the recording. Local coaching accepts transcripts of up
+to 6,000 characters; longer transcripts must be shortened explicitly.
+The comparison highlights removed and added text; for exceptionally long
+changes, it may highlight a larger region and will say so.
 The transcription adapter uses interim results to remove some duplicated
 segment-boundary words and adds a short silent tail for decoding. It does not
 deduplicate words indiscriminately: genuine repetitions matter for coaching.
@@ -79,6 +88,37 @@ because Gradle does not support catalog plugin aliases there.
 
 Run the analysis, transcription-merge, and model-download tests with
 `./gradlew :shared:desktopTest :transcription-mediapipe:testDebugUnitTest :app:testDebugUnitTest`.
+
+### Experimental Gemma audio probe
+
+The opt-in Android instrumentation probe tests the pinned models with a short
+synthetic recording; it does not add audio coaching to the app. A passing test
+checks recognizable words and nonempty responses, not suggestion quality or
+grounding. It logs the transcript and suggestions, so use only synthetic audio.
+
+On macOS, with a debug app and both models installed on the selected device:
+
+```sh
+say -v Samantha -r 150 -o /tmp/speechcoach-gemma-probe.aiff 'Our team completed the launch on time. Tomorrow we will review customer feedback.'
+afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/speechcoach-gemma-probe.aiff /tmp/speechcoach-gemma-source.wav
+python3 -c 'import wave; a=wave.open("/tmp/speechcoach-gemma-source.wav","rb"); b=wave.open("/tmp/speechcoach-gemma-probe.wav","wb"); b.setparams(a.getparams()); b.writeframes(a.readframes(a.getnframes())); b.close(); a.close()'
+adb push /tmp/speechcoach-gemma-probe.wav /data/local/tmp/speechcoach-gemma-probe.wav
+adb shell run-as com.example.speechcoach cp /data/local/tmp/speechcoach-gemma-probe.wav cache/speechcoach-gemma-probe.wav
+adb shell rm /data/local/tmp/speechcoach-gemma-probe.wav
+./gradlew :app:assembleDebugAndroidTest
+adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w -e class com.example.speechcoach.GemmaAudioProbeTest -e speechCoachAudioProbe true com.example.speechcoach.test/androidx.test.runner.AndroidJUnitRunner
+adb logcat -d -s GemmaAudioProbe:I '*:S'
+```
+
+Set `ANDROID_SERIAL` when more than one device is connected. The probe is skipped
+without the explicit instrumentation argument. Afterward, remove its synthetic
+fixture if it is no longer needed:
+
+```sh
+adb shell run-as com.example.speechcoach rm -f cache/speechcoach-gemma-probe.wav
+rm -f /tmp/speechcoach-gemma-probe.aiff /tmp/speechcoach-gemma-source.wav /tmp/speechcoach-gemma-probe.wav
+```
 
 ## Model attribution
 
