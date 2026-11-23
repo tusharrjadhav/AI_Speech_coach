@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.speechcoach.coaching.GemmaCoach
 import com.example.speechcoach.core.AudioClip
+import com.example.speechcoach.core.CoachingGoal
 import com.example.speechcoach.core.SpeechAnalyzer
 import com.example.speechcoach.core.SpeechOutput
 import com.example.speechcoach.core.TranscriptComparer
@@ -235,12 +236,21 @@ class PracticeViewModel(
         }
     }
 
+    fun selectCoachingGoal(goal: CoachingGoal) {
+        if (state.value.busy || state.value.recording || state.value.coachingGoal == goal) return
+        stopSuggestionReading()
+        _state.update {
+            it.copy(coachingGoal = goal, suggestion = null, suggestionSpeechError = null, improvement = null)
+        }
+    }
+
     fun coach() {
         val snapshot = state.value
         val report = snapshot.analysis ?: return
         runOperation("Generating local suggestions; this may take a while…") {
+            _state.update { it.copy(suggestion = null, suggestionSpeechError = null, improvement = null) }
             val suggestion = GemmaCoach(models.file(LocalModel.COACH), getApplication<Application>().cacheDir)
-                .suggest(snapshot.transcript, report)
+                .suggest(snapshot.transcript, report, snapshot.coachingGoal)
             _state.update { it.copy(suggestion = suggestion, suggestionSpeechError = null, improvement = null) }
             "Suggestions are ready."
         }

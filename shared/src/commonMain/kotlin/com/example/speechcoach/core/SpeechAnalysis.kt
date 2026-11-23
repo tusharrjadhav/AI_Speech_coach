@@ -14,12 +14,37 @@ data class DeliveryAnalysis(
     val possibleFillers: Map<String, Int>,
 )
 
+enum class CoachingGoal(val label: String, val practiceTip: String, val instruction: String) {
+    CLARITY(
+        "Clarity and structure",
+        "Practice expressing one idea at a time while keeping important details.",
+        "Focus on wording and structure, not vocal delivery. Suggest a specific change to the " +
+            "wording when it would make the excerpt clearer without removing or changing any facts. " +
+            "If the wording is already clear, say so and suggest how to practice its structure.",
+    ),
+    PACE(
+        "Pace and pauses",
+        "Try a brief pause between ideas, and adapt your pace to your audience.",
+        "Suggest where to practice a pause or how to vary pace, without claiming to have heard the recording.",
+    ),
+    FILLERS(
+        "Filler words",
+        "If you need a moment to think, try a pause. Occasional fillers are normal.",
+        "Suggest a practical way to manage fillers without claiming any were spoken if they do not appear " +
+            "in the transcript. Do not treat occasional fillers as a problem.",
+    ),
+}
+
 interface SpeechTranscriber {
     suspend fun transcribe(clip: AudioClip): Transcript
 }
 
 interface SpeechCoach {
-    suspend fun suggest(transcript: String, analysis: DeliveryAnalysis): String
+    suspend fun suggest(
+        transcript: String,
+        analysis: DeliveryAnalysis,
+        goal: CoachingGoal = CoachingGoal.CLARITY,
+    ): String
 }
 
 interface TranscriptImprover {

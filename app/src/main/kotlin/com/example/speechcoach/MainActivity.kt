@@ -111,6 +111,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     transcribe = { showTranscriptionConsent = true },
                                     editTranscript = viewModel::editTranscript,
+                                    selectCoachingGoal = viewModel::selectCoachingGoal,
                                     coach = viewModel::coach,
                                     improve = viewModel::improve,
                                     readSuggestion = viewModel::readSuggestion,

@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.speechcoach.coaching.GemmaCoach
+import com.example.speechcoach.core.CoachingGoal
 import com.example.speechcoach.core.SpeechAnalyzer
 import java.io.File
 import kotlinx.coroutines.runBlocking
@@ -14,6 +15,36 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class GemmaRevisionProbeTest {
+    @Test
+    fun generatesSuggestionsWithVerifiedExcerptsForEachGoal() {
+        assumeTrue(
+            "Set speechCoachRevisionProbe=true to run the model-dependent probe.",
+            InstrumentationRegistry.getArguments().getString("speechCoachRevisionProbe") == "true",
+        )
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val model = File(context.noBackupFilesDir, "models/${LocalModel.COACH.fileName}")
+        require(model.isFile && model.length() == LocalModel.COACH.size) {
+            "Install the pinned Gemma model in Model settings before running the probe."
+        }
+        val original = "Um, our team completed the launch on time. Tomorrow we will review customer feedback."
+        val withoutFillers = "Our team completed the launch on time. Tomorrow we will review customer feedback."
+        val cases = CoachingGoal.entries.map { it to original } + listOf(
+            CoachingGoal.FILLERS to withoutFillers,
+            CoachingGoal.CLARITY to "The deadline is 5 May. We have three tasks remaining.",
+            CoachingGoal.CLARITY to "Hi.",
+            CoachingGoal.CLARITY to
+                "Our team, uh, we completed the launch on time. Tomorrow we will review customer feedback.",
+        )
+        val coach = GemmaCoach(model, context.cacheDir)
+        runBlocking {
+            cases.forEach { (goal, transcript) ->
+                val advice = coach.suggest(transcript, SpeechAnalyzer.analyze(transcript, 30_000), goal)
+                Log.i(TAG, "${goal.label}, transcript: $transcript, advice: $advice")
+                assertTrue("The suggestion should include a verified excerpt.", advice.contains("Excerpt:"))
+            }
+        }
+    }
+
     @Test
     fun revisesSyntheticTranscriptUsingGeneratedAdvice() {
         assumeTrue(

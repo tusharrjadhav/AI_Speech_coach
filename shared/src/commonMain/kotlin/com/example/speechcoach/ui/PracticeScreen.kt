@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.example.speechcoach.core.CoachingGoal
 import com.example.speechcoach.core.DeliveryAnalysis
 import com.example.speechcoach.core.SuggestedEdit
 import com.example.speechcoach.core.TranscriptChange
@@ -58,6 +59,7 @@ data class PracticeState(
     val status: String? = null,
     val progress: Float? = null,
     val error: String? = null,
+    val coachingGoal: CoachingGoal = CoachingGoal.CLARITY,
     val suggestion: String? = null,
     val readingSuggestion: Boolean = false,
     val suggestionSpeechError: String? = null,
@@ -72,6 +74,7 @@ data class PracticeActions(
     val openSettings: () -> Unit,
     val transcribe: () -> Unit,
     val editTranscript: (String) -> Unit,
+    val selectCoachingGoal: (CoachingGoal) -> Unit,
     val coach: () -> Unit,
     val improve: () -> Unit,
     val readSuggestion: (String) -> Unit,
@@ -200,8 +203,8 @@ private fun ResultsCard(state: PracticeState, actions: PracticeActions) {
                 Text("Estimated pace: ${analysis.wordsPerMinute?.let { "$it words per minute" } ?: "unavailable"}")
                 Text("Possible “um” / “uh”: ${analysis.possibleFillers.values.sum()}")
                 Text(
-                    "These simple word estimates are best suited to English. Pace includes the whole recording, including silence. " +
-                        "Speech recognition can miss or add fillers; zero does not prove there were none.",
+                    "These estimates use the edited transcript and are best suited to English. Pace includes the whole " +
+                        "recording, including silence. Recognition can miss or add fillers; zero does not prove there were none.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -216,9 +219,21 @@ private fun LocalSuggestions(state: PracticeState, actions: PracticeActions) {
     HorizontalDivider(Modifier.padding(vertical = 4.dp))
     Text("Local coaching", style = MaterialTheme.typography.titleMedium)
     Text(
-        "Get wording suggestions from Gemma. It reads your transcript, not the recording.",
+        "Gemma uses your transcript and estimates, not the recording.",
         style = MaterialTheme.typography.bodySmall,
     )
+    Text("Choose a practice focus", style = MaterialTheme.typography.titleSmall)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        CoachingGoal.entries.forEach { goal ->
+            FilterChip(
+                selected = state.coachingGoal == goal,
+                onClick = { actions.selectCoachingGoal(goal) },
+                enabled = !state.busy && !state.recording,
+                label = { Text(goal.label) },
+            )
+        }
+    }
+    Text("Practice idea: ${state.coachingGoal.practiceTip}", style = MaterialTheme.typography.bodySmall)
     if (!state.coachModelReady) {
         Text("Install Gemma in Model settings to use local coaching.", style = MaterialTheme.typography.bodySmall)
     }
@@ -258,7 +273,7 @@ private fun LocalSuggestions(state: PracticeState, actions: PracticeActions) {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 Text(
-                    "Experimental: check the advice before using it.",
+                    "Excerpts are checked against your transcript, but the advice can still be wrong. Review it before using it.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -402,7 +417,8 @@ private fun TranscriptComparisonView(comparison: TranscriptComparison) {
     }
     Text(
         "Struck-through text was removed; underlined text was added. Check changes carefully: " +
-            "Gemma can remove important details. The original above is never replaced.",
+            "Gemma can remove important details. The original above is never replaced. " +
+            "If you approve, select and copy text from the Improved view.",
         style = MaterialTheme.typography.bodySmall,
     )
     if (comparison.approximate) {

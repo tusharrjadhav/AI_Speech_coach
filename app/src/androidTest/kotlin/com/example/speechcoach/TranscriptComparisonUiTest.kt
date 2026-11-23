@@ -10,6 +10,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -20,6 +21,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.example.speechcoach.core.CoachingGoal
 import com.example.speechcoach.core.TranscriptComparer
 import com.example.speechcoach.ui.PracticeActions
 import com.example.speechcoach.ui.PracticeScreen
@@ -34,6 +36,29 @@ import org.junit.runner.RunWith
 class TranscriptComparisonUiTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun choosesPracticeFocusAndDisablesItDuringAnOperation() {
+        val state = mutableStateOf(PracticeState())
+        compose.setContent {
+            MaterialTheme {
+                PracticeScreen(
+                    state = state.value,
+                    actions = PracticeActions(
+                        record = {}, stop = {}, play = {}, delete = {}, openSettings = {}, transcribe = {},
+                        editTranscript = {},
+                        selectCoachingGoal = { state.value = state.value.copy(coachingGoal = it) },
+                        coach = {}, improve = {}, readSuggestion = {}, stopSuggestion = {}, dismissError = {},
+                    ),
+                )
+            }
+        }
+        compose.onNodeWithText("Pace and pauses").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithText("Practice idea: ${CoachingGoal.PACE.practiceTip}")
+            .performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { state.value = state.value.copy(busy = true) }
+        compose.onNodeWithText("Filler words").performScrollTo().assertIsNotEnabled()
+    }
 
     @Test
     fun switchesBetweenHighlightedVersionsWithoutReplacingTheOriginal() {
@@ -51,7 +76,7 @@ class TranscriptComparisonUiTest {
                         ),
                         actions = PracticeActions(
                             record = {}, stop = {}, play = {}, delete = {}, openSettings = {}, transcribe = {},
-                            editTranscript = {}, coach = {}, improve = {}, readSuggestion = {},
+                            editTranscript = {}, selectCoachingGoal = {}, coach = {}, improve = {}, readSuggestion = {},
                             stopSuggestion = {}, dismissError = {},
                         ),
                     )
@@ -93,7 +118,7 @@ class TranscriptComparisonUiTest {
                         ),
                         actions = PracticeActions(
                             record = {}, stop = {}, play = {}, delete = {}, openSettings = {}, transcribe = {},
-                            editTranscript = {}, coach = {}, improve = {}, readSuggestion = {},
+                            editTranscript = {}, selectCoachingGoal = {}, coach = {}, improve = {}, readSuggestion = {},
                             stopSuggestion = {}, dismissError = {},
                         ),
                     )
@@ -118,7 +143,7 @@ class TranscriptComparisonUiTest {
                     state = state.value,
                     actions = PracticeActions(
                         record = {}, stop = {}, play = {}, delete = {}, openSettings = {}, transcribe = {},
-                        editTranscript = {}, coach = {}, improve = {},
+                        editTranscript = {}, selectCoachingGoal = {}, coach = {}, improve = {},
                         readSuggestion = { text ->
                             starts++
                             spokenText = text

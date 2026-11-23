@@ -2,10 +2,10 @@
 
 An Android-first, local speech-practice experiment. Record up to two minutes, play
 back the recording, transcribe it on device, edit the transcript, and review
-estimated pace and possible fillers. Optional Gemma 4 suggestions focus on the
-transcript's wording, not how the speaker sounded. After receiving suggestions,
-you can ask Gemma for an improved transcript and compare it with the original;
-the original is never replaced automatically.
+estimated pace and possible fillers. Choose a focus for optional Gemma 4
+suggestions; it sees the transcript and estimates, not how the speaker sounded.
+After receiving suggestions, you can ask Gemma for an improved transcript and
+compare it with the original; the original is never replaced automatically.
 
 The **Listen to suggestions** control reads the displayed AI advice using the
 device's selected Android text-to-speech engine. It chooses an installed voice
@@ -72,16 +72,52 @@ count does not prove that none were spoken. Edit the transcript to recalculate
 the estimates; AI suggestions and rewritten text can also be wrong, remove
 important details, or change your meaning even when instructed not to. Review
 every proposed change. Gemma receives the transcript and
-its text advice, not the recording. Local coaching accepts transcripts of up
+its derived estimates and text advice, not the recording. Each AI suggestion
+must quote an exact excerpt from the transcript or it is rejected. If the model does not return the
+requested format, coaching reports an error and can be retried. This verifies
+the excerpt only: advice, implied measurements and rewritten text may still be
+incorrect. Changing the transcript or coaching focus clears previous suggestions
+and comparisons. Local coaching accepts transcripts of up
 to 6,000 characters; longer transcripts must be shortened explicitly.
 The comparison highlights removed and added text and lists suggested wording
 as before/after pairs. These are AI proposals, not verified transcription
-corrections. For exceptionally long changes, the comparison may highlight a
-larger region and will say so.
+corrections. If you approve a revision, select and copy it from the Improved
+view; the original is not replaced. For exceptionally long changes, the
+comparison may highlight a larger region and will say so.
 The transcription adapter uses interim results to remove some duplicated
 segment-boundary words and adds a short silent tail for decoding. It does not
 deduplicate words indiscriminately: genuine repetitions matter for coaching.
 Recognition and boundary merging can still be wrong, so review the transcript.
+
+## Delivery metrics and coaching methods
+
+There is no universal speaking rate or single score that proves a speech is
+clear. This prototype shows observations rather than grading the speaker:
+
+| Area | Available now | Limitations and practice |
+| --- | --- | --- |
+| Overall pace | Edited transcript word count divided by the full recording duration, in words per minute. | Includes silence, is sensitive to recognition and edits, and does not show speed changes or intelligibility. Try pausing between ideas and adapting to the audience. |
+| Possible fillers | Counts transcript tokens “um” and “uh”. | English-oriented and incomplete; recognition can omit or invent them. Fillers are normal. If useful, practice replacing some with a pause. |
+| Wording and structure | Goal-focused, transcript-anchored AI suggestions and an optional before/after comparison. | Exact excerpt matching does not verify advice or preserve meaning. Review each proposed edit. |
+| Pauses, pronunciation, pitch, volume and clarity of speech | Not measured. | These require audio-based evaluation and validation; text cannot establish how the recording sounded. |
+
+[Microsoft Speaker Coach](https://support.microsoft.com/en-us/powerpoint/suggestions-from-speaker-coach)
+reports pace variation, fillers and other delivery features and suggests pausing
+and practicing. It offers 100–165 words per minute as guidance in its tested
+presentation context, while acknowledging individual differences. Our overall
+recording rate is not the same as its short-interval rate, so we do not apply
+that range as a pass/fail threshold. A [clear-speech research review](https://europepmc.org/article/PMC/PMC2747755)
+also notes that speaking rate alone does not consistently predict intelligibility.
+[ASHA](https://www.asha.org/practice-portal/clinical-topics/fluency-disorders/)
+notes that everyone is disfluent at times; this app does not diagnose speech
+or language conditions.
+
+Other production products report broader features than this prototype:
+[Yoodli](https://yoodli.ai/use-cases/public-speaking) describes goal-oriented
+practice and reports on pacing, fillers and structure;
+[Orai](https://orai.com/product/) describes pace, fillers and practice trends.
+Their product claims are not validation of this app's measurements, and this
+prototype does not yet provide their audio-derived scores or history.
 
 ## Structure
 
@@ -104,6 +140,17 @@ because Gradle does not support catalog plugin aliases there.
 
 Run the analysis, transcription-merge, and model-download tests with
 `./gradlew :shared:desktopTest :transcription-mediapipe:testDebugUnitTest :app:testDebugUnitTest`.
+
+The opt-in `GemmaRevisionProbeTest` includes a synthetic-text probe of all three
+coaching goals and excerpt validation. With the pinned coaching model installed
+on the test device, it can be run with:
+
+```sh
+adb shell am instrument -w -e class 'com.example.speechcoach.GemmaRevisionProbeTest#generatesSuggestionsWithVerifiedExcerptsForEachGoal' -e speechCoachRevisionProbe true com.example.speechcoach.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+The probe logs only its synthetic input and output. A pass checks the output
+format and excerpts, not whether the advice or a rewrite is correct.
 
 The Android instrumentation tests include an opt-in synthetic speech probe
 that requires an installed offline voice for the device language. To run it
