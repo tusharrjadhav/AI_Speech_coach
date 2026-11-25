@@ -8,12 +8,14 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -23,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -32,6 +35,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.speechcoach.history.LocalPracticeHistory
+import com.example.speechcoach.ui.HistoryScreen
+import com.example.speechcoach.ui.ThemePreference
 import com.example.speechcoach.ui.PracticeActions
 import com.example.speechcoach.ui.PracticeScreen
 import com.example.speechcoach.ui.ModelSettingsActions
@@ -41,7 +47,7 @@ import com.example.speechcoach.ui.theme.SpeechCoachTheme
 class MainActivity : ComponentActivity() {
     private val viewModel: PracticeViewModel by viewModels {
         viewModelFactory {
-            initializer { PracticeViewModel(application, AndroidSpeechOutput(application)) }
+            initializer { PracticeViewModel(application, AndroidSpeechOutput(application), LocalPracticeHistory(application)) }
         }
     }
 
@@ -54,6 +60,15 @@ class MainActivity : ComponentActivity() {
             var showSettings by remember { mutableStateOf(false) }
             var showTranscriptionConsent by remember { mutableStateOf(false) }
             var showingModelSettings by rememberSaveable { mutableStateOf(false) }
+            val preferences = remember { getSharedPreferences("appearance", MODE_PRIVATE) }
+            var theme by remember { mutableStateOf(ThemePreference.entries.firstOrNull {
+                it.name == preferences.getString("theme", null)
+            } ?: ThemePreference.SYSTEM) }
+            val dark = theme == ThemePreference.DARK || (theme == ThemePreference.SYSTEM && isSystemInDarkTheme())
+            LaunchedEffect(dark) {
+                val bars = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark }
+                enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+            }
             val speechPicker = rememberLauncherForActivityResult(LocalModelDocument()) { uri ->
                 if (uri != null) viewModel.importModel(LocalModel.SPEECH, uri)
             }
@@ -61,6 +76,7 @@ class MainActivity : ComponentActivity() {
                 if (uri != null) viewModel.importModel(LocalModel.COACH, uri)
             }
             BackHandler(enabled = showingModelSettings) { showingModelSettings = false }
+            BackHandler(enabled = state.historyOpen && !showingModelSettings) { viewModel.historyBack() }
             val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                 if (granted) {
                     viewModel.record()
@@ -70,7 +86,7 @@ class MainActivity : ComponentActivity() {
                     showRationale = true
                 }
             }
-            SpeechCoachTheme {
+            SpeechCoachTheme(darkTheme = dark) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
@@ -89,7 +105,17 @@ class MainActivity : ComponentActivity() {
                                 ),
                                 speechFileName = LocalModel.SPEECH.fileName,
                                 coachFileName = LocalModel.COACH.fileName,
+                                theme = theme,
+                                changeTheme = {
+                                    theme = it
+                                    preferences.edit().putString("theme", it.name).apply()
+                                },
                             )
+                        } else if (state.historyOpen) {
+                            val dates = remember { java.text.DateFormat.getDateTimeInstance() }
+                            HistoryScreen(state, viewModel::historyBack, viewModel::openAttempt,
+                                viewModel::retryAttempt, { viewModel.playSaved() }, viewModel::playSaved, viewModel::deleteAttempt,
+                                viewModel::dismissError) { dates.format(java.util.Date(it)) }
                         } else {
                             PracticeScreen(
                                 state,
@@ -107,6 +133,7 @@ class MainActivity : ComponentActivity() {
                                     delete = viewModel::deleteRecording,
                                     openSettings = {
                                         viewModel.stopSuggestionReading()
+                                        viewModel.stopPlayback()
                                         showingModelSettings = true
                                     },
                                     transcribe = { showTranscriptionConsent = true },
@@ -117,6 +144,11 @@ class MainActivity : ComponentActivity() {
                                     readSuggestion = viewModel::readSuggestion,
                                     stopSuggestion = viewModel::stopSuggestionReading,
                                     dismissError = viewModel::dismissError,
+                                    openHistory = viewModel::openHistory,
+                                    selectScenario = viewModel::selectScenario,
+                                    saveAttempt = viewModel::saveAttempt,
+                                    replayFrom = viewModel::replayFrom,
+                                    cancelRetry = viewModel::cancelRetry,
                                 ),
                             )
                         }
@@ -182,6 +214,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         viewModel.stopRecording()
         viewModel.stopSuggestionReading()
+        viewModel.stopPlayback()
         super.onStop()
     }
 }

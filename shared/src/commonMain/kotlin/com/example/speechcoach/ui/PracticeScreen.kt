@@ -40,6 +40,11 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.example.speechcoach.core.CoachingGoal
+import com.example.speechcoach.core.Attempt
+import com.example.speechcoach.core.AttemptLabel
+import com.example.speechcoach.core.PracticeLoop
+import com.example.speechcoach.core.RecordingEvidence
+import com.example.speechcoach.core.Scenario
 import com.example.speechcoach.core.DeliveryAnalysis
 import com.example.speechcoach.core.SuggestedEdit
 import com.example.speechcoach.core.TranscriptChange
@@ -64,6 +69,14 @@ data class PracticeState(
     val readingSuggestion: Boolean = false,
     val suggestionSpeechError: String? = null,
     val improvement: TranscriptComparison? = null,
+    val scenario: Scenario = Scenario.UPDATE,
+    val audio: RecordingEvidence? = null,
+    val historyOpen: Boolean = false,
+    val history: List<AttemptLabel> = emptyList(),
+    val selectedAttempt: Attempt? = null,
+    val selectedBaselineMetrics: DeliveryAnalysis? = null,
+    val pendingRetry: Attempt? = null,
+    val baseline: Attempt? = null,
 )
 
 data class PracticeActions(
@@ -80,6 +93,11 @@ data class PracticeActions(
     val readSuggestion: (String) -> Unit,
     val stopSuggestion: () -> Unit,
     val dismissError: () -> Unit,
+    val openHistory: () -> Unit = {},
+    val selectScenario: (Scenario) -> Unit = {},
+    val saveAttempt: () -> Unit = {},
+    val replayFrom: (Long) -> Unit = {},
+    val cancelRetry: () -> Unit = {},
 )
 
 @Composable
@@ -92,7 +110,7 @@ fun PracticeScreen(state: PracticeState, actions: PracticeActions) {
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
             ) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                    Header(actions.openSettings)
+                    Header(state, actions)
                     RecordingCard(state, actions)
                     ModelCard(state, actions)
                 }
@@ -105,7 +123,7 @@ fun PracticeScreen(state: PracticeState, actions: PracticeActions) {
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Header(actions.openSettings)
+                Header(state, actions)
                 RecordingCard(state, actions)
                 ModelCard(state, actions)
                 ResultsCard(state, actions)
@@ -115,14 +133,17 @@ fun PracticeScreen(state: PracticeState, actions: PracticeActions) {
 }
 
 @Composable
-private fun Header(openSettings: () -> Unit) {
+private fun Header(state: PracticeState, actions: PracticeActions) {
     Text("Speech Coach", style = MaterialTheme.typography.headlineMedium)
     Text(
         "Practice privately, review your words, and try again.",
         style = MaterialTheme.typography.bodyLarge,
         modifier = Modifier.padding(vertical = 8.dp),
     )
-    TextButton(onClick = openSettings) { Text("Model settings") }
+    FlowRow {
+        TextButton(onClick = actions.openHistory, enabled = !state.busy && !state.recording) { Text("Local history") }
+        TextButton(onClick = actions.openSettings) { Text("Model settings") }
+    }
 }
 
 @Composable
@@ -130,6 +151,22 @@ private fun RecordingCard(state: PracticeState, actions: PracticeActions) {
     Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("1. Record a practice", style = MaterialTheme.typography.titleLarge)
+            val target = state.pendingRetry?.scenario ?: state.scenario
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Scenario.entries.forEach { scenario ->
+                    FilterChip(
+                        selected = scenario == target, label = { Text(scenario.title) },
+                        onClick = { actions.selectScenario(scenario) },
+                        enabled = !state.busy && !state.recording && state.pendingRetry == null,
+                    )
+                }
+            }
+            Text(target.prompt)
+            state.pendingRetry?.let { before ->
+                Text("Next recording: retry · ${before.goal.label}")
+                Text(before.exercise)
+                TextButton(onClick = actions.cancelRetry, enabled = !state.recording && !state.busy) { Text("Cancel retry") }
+            }
             Text("Record up to 2 minutes. Audio stays on this device and recording stops when the app leaves the screen.")
             if (state.recording) {
                 Button(onClick = actions.stop) { Text("Stop recording") }
@@ -147,6 +184,8 @@ private fun RecordingCard(state: PracticeState, actions: PracticeActions) {
                 OutlinedButton(onClick = actions.delete, enabled = !state.recording && !state.busy) {
                     Text("Delete")
                 }
+                Text("Recording again replaces this draft. Save an attempt to keep it in Local history.",
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -199,29 +238,39 @@ private fun ResultsCard(state: PracticeState, actions: PracticeActions) {
                 enabled = !state.busy && !state.recording,
             )
             state.analysis?.let { analysis ->
-                Text("Words: ${analysis.wordCount}")
-                Text("Estimated pace: ${analysis.wordsPerMinute?.let { "$it words per minute" } ?: "unavailable"}")
-                Text("Possible “um” / “uh”: ${analysis.possibleFillers.values.sum()}")
+                TranscriptMetrics(analysis, state.transcript)
                 Text(
                     "These estimates use the edited transcript and are best suited to English. Pace includes the whole " +
                         "recording, including silence. Recognition can miss or add fillers; zero does not prove there were none.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            AudioMetrics(state.audio, if (!state.busy && !state.recording) actions.replayFrom else null)
+            PracticeFocus(state, actions)
+            state.analysis?.takeIf { it.wordCount > 0 }?.let { metrics ->
+                Text("Next-take exercise", style = MaterialTheme.typography.titleMedium)
+                Text(PracticeLoop.exercise(state.coachingGoal, metrics))
+                state.baseline?.let { before ->
+                    Text("Compared with your saved take", style = MaterialTheme.typography.titleMedium)
+                    Text(PracticeLoop.comparison(before.metrics, metrics))
+                }
+            }
             LocalSuggestions(state, actions)
+            if ((state.analysis?.wordCount ?: 0) > 0) {
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                Text("Keep the audio, transcript, metrics and feedback in Local history until you delete the attempt. Saving the same recording updates its entry.")
+                Button(onClick = actions.saveAttempt, enabled = state.hasRecording && !state.busy && !state.recording) {
+                    Text("Save attempt")
+                }
+            }
             Spacer(Modifier.padding(2.dp))
         }
     }
 }
 
 @Composable
-private fun LocalSuggestions(state: PracticeState, actions: PracticeActions) {
+private fun PracticeFocus(state: PracticeState, actions: PracticeActions) {
     HorizontalDivider(Modifier.padding(vertical = 4.dp))
-    Text("Local coaching", style = MaterialTheme.typography.titleMedium)
-    Text(
-        "Gemma uses your transcript and estimates, not the recording.",
-        style = MaterialTheme.typography.bodySmall,
-    )
     Text("Choose a practice focus", style = MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         CoachingGoal.entries.forEach { goal ->
@@ -233,7 +282,18 @@ private fun LocalSuggestions(state: PracticeState, actions: PracticeActions) {
             )
         }
     }
-    Text("Practice idea: ${state.coachingGoal.practiceTip}", style = MaterialTheme.typography.bodySmall)
+    if ((state.analysis?.wordCount ?: 0) == 0) {
+        Text("Practice idea: ${state.coachingGoal.practiceTip}", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun LocalSuggestions(state: PracticeState, actions: PracticeActions) {
+    Text("Local coaching", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Gemma uses your reviewed transcript and estimates, not the recording.",
+        style = MaterialTheme.typography.bodySmall,
+    )
     if (!state.coachModelReady) {
         Text("Install Gemma in Model settings to use local coaching.", style = MaterialTheme.typography.bodySmall)
     }

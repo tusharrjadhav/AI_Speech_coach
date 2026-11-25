@@ -18,6 +18,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            api(project(":practice-core"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)

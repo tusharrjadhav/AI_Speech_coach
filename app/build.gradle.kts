@@ -53,6 +53,8 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
   implementation(project(":shared"))
+  implementation(project(":audio-android"))
+  implementation(project(":history-local"))
   implementation(project(":transcription-mediapipe"))
   implementation(project(":coaching-gemma"))
 

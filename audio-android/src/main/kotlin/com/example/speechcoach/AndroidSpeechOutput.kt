@@ -22,7 +22,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-internal class AndroidSpeechOutput(context: Context) : SpeechOutput {
+class AndroidSpeechOutput(context: Context) : SpeechOutput {
     private val context = context.applicationContext
     private val lock = Any()
     private var activeEngine: TextToSpeech? = null
@@ -141,7 +141,7 @@ internal class AndroidSpeechOutput(context: Context) : SpeechOutput {
     }
 }
 
-internal fun selectOfflineVoice(voices: Collection<Voice>, locale: Locale, defaultVoice: Voice?): Voice? {
+fun selectOfflineVoice(voices: Collection<Voice>, locale: Locale, defaultVoice: Voice?): Voice? {
     val available = voices.filter {
         !it.isNetworkConnectionRequired &&
             TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features &&

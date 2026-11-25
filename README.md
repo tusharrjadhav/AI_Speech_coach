@@ -1,11 +1,16 @@
 # Speech Coach prototype
 
-An Android-first, local speech-practice experiment. Record up to two minutes, play
-back the recording, transcribe it on device, edit the transcript, and review
-estimated pace and possible fillers. Choose a focus for optional Gemma 4
-suggestions; it sees the transcript and estimates, not how the speaker sounded.
-After receiving suggestions, you can ask Gemma for an improved transcript and
-compare it with the original; the original is never replaced automatically.
+An Android-first, local speech-practice app. Choose **Team update**, **Interview**,
+or **Explain an idea**, then record up to two minutes. Transcribe on device or
+enter the words yourself. Review the estimates, choose a focus, and get one
+exercise for the next take. This loop does not require a model or an account.
+
+Choose **Save attempt** to keep the recording, reviewed transcript, metrics,
+exercise, and any AI advice or revision. In **Local history**, replay it or
+choose **Practice this again**. After reviewing the next take, compare word
+count, estimated pace, and possible fillers per 100 words side by side. Optional
+Gemma suggestions use the reviewed text and estimates, not how the speaker sounded.
+An optional rewrite highlights suggested changes without replacing the original.
 
 The **Listen to suggestions** control reads the displayed AI advice using the
 device's selected Android text-to-speech engine. It chooses an installed voice
@@ -29,11 +34,17 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Android 9 (API 28) or newer is required. Grant microphone access when starting
-a recording. Recording stops when the app leaves the screen; the latest completed
-recording can be played or deleted. A new successful recording replaces the
-previous one. The transcript is editable during a session but is not yet saved
-across app restarts. Editing it clears any suggestions and comparison so they
-cannot refer to an outdated transcript.
+a recording. Recording stops when the app leaves the screen. The latest completed
+recording is a **working draft**: another successful recording replaces it.
+Unsaved text edits do not survive a restart. Saving the same recording again
+updates its history entry; the saved snapshot reopens with its draft if that
+recording is still current. History is independent of the draft: deleting one
+does not delete the other. Saved attempts stay in app-private SQLite storage
+until explicitly deleted or app data is cleared. A two-minute saved recording
+uses about 3.8 MB, in addition to the active draft if it is the same take.
+
+Under **Model settings → Appearance**, choose **System**, **Light**, or **Dark**.
+The selection persists across restarts.
 
 Open **Model settings** to download a model or browse for an existing local
 `.litertlm` file. The app does not download models automatically. On a suitable
@@ -72,7 +83,9 @@ count does not prove that none were spoken. Edit the transcript to recalculate
 the estimates; AI suggestions and rewritten text can also be wrong, remove
 important details, or change your meaning even when instructed not to. Review
 every proposed change. Gemma receives the transcript and
-its derived estimates and text advice, not the recording. Each AI suggestion
+its derived estimates and text advice, not the recording. When retrying the same
+scenario and focus, the harness also supplies the prior exercise and the two
+sets of estimates, not the full earlier transcript. Each AI suggestion
 must quote an exact excerpt from the transcript or it is rejected. If the model does not return the
 requested format, coaching reports an error and can be retried. This verifies
 the excerpt only: advice, implied measurements and rewritten text may still be
@@ -97,9 +110,13 @@ clear. This prototype shows observations rather than grading the speaker:
 | Area | Available now | Limitations and practice |
 | --- | --- | --- |
 | Overall pace | Edited transcript word count divided by the full recording duration, in words per minute. | Includes silence, is sensitive to recognition and edits, and does not show speed changes or intelligibility. Try pausing between ideas and adapting to the audience. |
-| Possible fillers | Counts transcript tokens “um” and “uh”. | English-oriented and incomplete; recognition can omit or invent them. Fillers are normal. If useful, practice replacing some with a pause. |
-| Wording and structure | Goal-focused, transcript-anchored AI suggestions and an optional before/after comparison. | Exact excerpt matching does not verify advice or preserve meaning. Review each proposed edit. |
-| Pauses, pronunciation, pitch, volume and clarity of speech | Not measured. | These require audio-based evaluation and validation; text cannot establish how the recording sounded. |
+| Possible fillers | Counts “um” and “uh” and shows occurrences per 100 reviewed words. | Recognition can omit or invent them. Short takes exaggerate changes in density; fillers are normal. |
+| Repeated phrases | Up to three repeated adjacent word pairs, with counts and examples from the transcript. | Repetition may be intentional. Listen back before changing the wording. |
+| Section pace | WPM for coarse, nonoverlapping recognition sections when at least two have three words and last three seconds each. | Not word alignment. Hidden for manual or edited transcripts; silence within a section still counts. |
+| Quiet gaps | Estimates interior gaps of at least 0.5 seconds between louder sounds; replay up to three of the longest. | Uses 20 ms signal-level windows. Background noise and microphone gain affect detection. These are not necessarily speech pauses. |
+| Recording quality | Flags low signal or possible clipping. | Checks the recording, not the speaker’s vocal volume. Listen and adjust the microphone if needed. |
+| Wording and structure | Goal-focused, transcript-anchored AI suggestions and an optional highlighted rewrite. | Matching an excerpt does not verify advice or preserve meaning. Review each proposed edit. |
+| Pronunciation, pitch, confidence and intelligibility | Not scored. | Neither transcript metrics nor these signal checks establish how clearly someone spoke. |
 
 [Microsoft Speaker Coach](https://support.microsoft.com/en-us/powerpoint/suggestions-from-speaker-coach)
 reports pace variation, fillers and other delivery features and suggests pausing
@@ -115,21 +132,28 @@ or language conditions.
 Other production products report broader features than this prototype:
 [Yoodli](https://yoodli.ai/use-cases/public-speaking) describes goal-oriented
 practice and reports on pacing, fillers and structure;
-[Orai](https://orai.com/product/) describes pace, fillers and practice trends.
+[Orai](https://orai.com/product/) describes pace, fillers and practice trends;
+[Oompf](https://oompf.app/about) inspired the short practice-and-retry loop.
 Their product claims are not validation of this app's measurements, and this
-prototype does not yet provide their audio-derived scores or history.
+prototype does not provide an overall delivery score, simulated role-play, or long-term trends.
 
 ## Structure
 
-- `shared`: Kotlin Multiplatform contracts, analysis, and adaptive Compose
-  Multiplatform UI. Android, iOS and desktop targets are configured; only
-  Android has an application and platform adapters so far.
-- `app`: Android application, microphone recording, playback, permissions and
-  user-initiated model downloads.
+- `practice-core`: Kotlin Multiplatform contracts, transcript and PCM metrics,
+  scenarios, exercises, retry comparison, and the coaching prompt/validation harness.
+- `shared`: adaptive Compose Multiplatform practice, history, and settings screens.
+- `audio-android`: microphone input, WAV decoding for analysis, seekable playback
+  of draft/archived audio, and offline text-to-speech output.
+- `history-local`: Android SQLite archive. Audio and snapshot are saved/deleted in
+  one row; list queries never load recordings. Playback reads one bounded WAV
+  without a cursor window or temporary audio file.
+- `app`: Android entry point, practice state, permission handling, appearance
+  persistence, and user-initiated model downloads.
 - `transcription-mediapipe`: Android MediaPipe audio transcription adapter.
-- `coaching-gemma`: optional Android LiteRT-LM text-coaching adapter.
+- `coaching-gemma`: optional Gemma advice/revision adapter. A `TextInference`
+  interface separates model I/O and the LiteRT-LM engine lifecycle from coaching policy.
 
-Adapters implement interfaces in `shared`, so other speech recognition, coaching,
+Adapters implement interfaces in `practice-core`, so other speech recognition, coaching,
 and speech-output implementations can be added without changing the analysis
 rules. The Android entry point supplies its speech-output adapter to the
 ViewModel, while the shared UI passes the displayed suggestion text to it.
@@ -138,8 +162,26 @@ Module plugin and library versions are managed in `gradle/libs.versions.toml`;
 the settings-level toolchain resolver is declared in `settings.gradle.kts`
 because Gradle does not support catalog plugin aliases there.
 
-Run the analysis, transcription-merge, and model-download tests with
-`./gradlew :shared:desktopTest :transcription-mediapipe:testDebugUnitTest :app:testDebugUnitTest`.
+Run the metrics, retry harness (including fake inference), audio, transcription,
+and model-download tests:
+
+```sh
+./gradlew :practice-core:desktopTest :coaching-gemma:testDebugUnitTest :audio-android:testDebugUnitTest :transcription-mediapipe:testDebugUnitTest :app:testDebugUnitTest
+```
+
+To run the real record/save/replay/retry/delete journey, use an **empty,
+disposable emulator only**, with no user recordings or models. The opt-in UI
+test records two short takes and enters synthetic transcripts; it does not run
+ASR or Gemma. Replace `SERIAL` with that emulator's serial. Do not use a
+personal device or clear an existing user's data to run this test.
+
+```sh
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+android run --device=SERIAL --apks=app/build/outputs/apk/debug/app-debug.apk
+android install --device=SERIAL --apks=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk --install-options=-t
+adb -s SERIAL shell pm grant com.example.speechcoach android.permission.RECORD_AUDIO
+adb -s SERIAL shell am instrument -w -e speechCoachScratchDevice true com.example.speechcoach.test/androidx.test.runner.AndroidJUnitRunner
+```
 
 The opt-in `GemmaRevisionProbeTest` includes a synthetic-text probe of all three
 coaching goals and excerpt validation. With the pinned coaching model installed

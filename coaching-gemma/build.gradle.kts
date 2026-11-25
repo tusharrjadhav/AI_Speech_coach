@@ -13,7 +13,9 @@ android {
 }
 
 dependencies {
-    implementation(project(":shared"))
+    implementation(project(":practice-core"))
     implementation(libs.litertlm.android)
     implementation(libs.kotlinx.coroutines.android)
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

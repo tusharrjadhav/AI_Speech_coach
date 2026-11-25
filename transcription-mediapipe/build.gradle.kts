@@ -13,7 +13,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":shared"))
+    implementation(project(":practice-core"))
     implementation(libs.mediapipe.tasks.audio)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)

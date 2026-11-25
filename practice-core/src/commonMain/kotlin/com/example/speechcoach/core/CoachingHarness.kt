@@ -7,10 +7,14 @@ object CoachingHarness {
     )
     private val reservedTag = Regex("</?(suggestion|source|advice)>")
 
-    fun prompt(transcript: String, analysis: DeliveryAnalysis, goal: CoachingGoal): String {
+    fun prompt(transcript: String, analysis: DeliveryAnalysis, goal: CoachingGoal, context: PracticeContext = PracticeContext()): String {
         val fillers = listOf("um", "uh").joinToString(", ") {
             "$it: ${analysis.possibleFillers[it] ?: 0}"
         }
+        val previous = context.baselineFor(goal)
+        val retry = previous?.let {
+            "Previous exercise (not new transcript evidence): ${it.exercise}\nPrevious → current estimates: ${PracticeLoop.comparison(it.metrics, analysis)}"
+        } ?: "First take for this exercise; do not claim a change."
         return """
             You are a supportive speech coach. Give one or two short, actionable suggestions
             for the selected goal, each anchored to an exact excerpt from the transcript.
@@ -25,9 +29,14 @@ object CoachingHarness {
             Selected goal: ${goal.label}
             Practice idea: ${goal.practiceTip}
             Goal guidance: ${goal.instruction}
+            Practice scenario: ${context.scenario.prompt}
+            $retry
+            Give one next-take exercise. Compare only the supplied estimates, not ability or confidence.
             Transcript word count: ${analysis.wordCount}
             Estimated words per minute over the full recording: ${analysis.wordsPerMinute ?: "unavailable"}
             Possible fillers in the transcript: $fillers
+            Possible fillers per 100 words: ${analysis.fillersPer100 ?: "unavailable"}
+            Repeated word pairs in the transcript, not necessarily mistakes: ${analysis.repeatedPhrases}
 
             Return only one or two blocks in this exact format, with no other text:
             <suggestion>

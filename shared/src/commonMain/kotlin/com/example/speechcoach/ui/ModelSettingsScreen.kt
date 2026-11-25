@@ -2,6 +2,7 @@ package com.example.speechcoach.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -17,6 +19,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+
+enum class ThemePreference(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
 
 data class ModelSettingsActions(
     val back: () -> Unit,
@@ -33,6 +37,8 @@ fun ModelSettingsScreen(
     actions: ModelSettingsActions,
     speechFileName: String,
     coachFileName: String,
+    theme: ThemePreference,
+    changeTheme: (ThemePreference) -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -41,6 +47,12 @@ fun ModelSettingsScreen(
         Column(Modifier.fillMaxWidth().widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             TextButton(onClick = actions.back) { Text("Back to practice") }
             Text("Model settings", style = MaterialTheme.typography.headlineMedium)
+            Text("Appearance", style = MaterialTheme.typography.titleMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ThemePreference.entries.forEach {
+                    FilterChip(selected = theme == it, onClick = { changeTheme(it) }, label = { Text(it.label) })
+                }
+            }
             Text(
                 "Download a model from Hugging Face or choose an existing file from your device. " +
                     "Only the supported model files below can be imported."
