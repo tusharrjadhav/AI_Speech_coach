@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="546" viewBox="0 0 880 546" role="img" aria-labelledby="title desc">
+  <title id="title">Speech Coach technology stack</title>
+  <desc id="desc">Kotlin Multiplatform shares Compose screens and practice logic. The Android app connects them to audio recording and playback, Parakeet transcription through MediaPipe Tasks Audio, optional Gemma coaching through LiteRT-LM, and SQLite history.</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .label { font-size: 15px; font-weight: 700; letter-spacing: 1.4px; }
+    .module { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; }
+    .name { fill: #142e42; font-size: 23px; font-weight: 650; }
+    .detail { fill: #314a59; font-size: 17px; }
+  </style>
+  <rect width="880" height="546" rx="20" fill="#102837"/>
+  <text class="label" x="30" y="34" fill="#92ded1">SPEECH COACH / TECH STACK</text>
+  <text x="28" y="75" fill="#ffffff" font-size="34" font-weight="700">From recording to feedback</text>
+  <path d="M710 54h13m7 -8v16m9 -23v30m9 -39v48m9 -57v66m9 -49v32m9 -38v44m9 -31v18m9 -25v32m9 -22v12m8 -6h15"
+        fill="none" stroke="#92ded1" stroke-width="4" stroke-linecap="round" aria-hidden="true"/>
+
+  <rect x="20" y="100" width="840" height="142" rx="12" fill="#e5efff"/>
+  <text class="label" x="44" y="130" fill="#244c86">SHARED / KOTLIN MULTIPLATFORM</text>
+  <path d="M440 150v73" stroke="#b1c9e9"/>
+  <g transform="translate(44 163)">
+    <text class="module" fill="#315b90">:shared</text>
+    <text class="name" y="29">Compose Multiplatform</text>
+    <text class="detail" y="55">Practice, history, and settings screens</text>
+  </g>
+  <g transform="translate(464 163)">
+    <text class="module" fill="#315b90">:practice-core</text>
+    <text class="name" y="29">Practice logic</text>
+    <text class="detail" y="55">Delivery metrics, exercises, and retry comparisons</text>
+  </g>
+
+  <rect x="20" y="256" width="840" height="270" rx="12" fill="#e4f4ee"/>
+  <text class="label" x="44" y="287" fill="#155947">ANDROID / ON-DEVICE SERVICES</text>
+  <text class="module" x="836" y="287" fill="#245f50" text-anchor="end">wired by :app</text>
+  <path d="M440 306v197M44 405h792" stroke="#adcfc1"/>
+  <g transform="translate(44 328)">
+    <text class="module" fill="#245f50">:audio-android</text>
+    <text class="name" y="29">Android audio APIs</text>
+    <text class="detail" y="55">Record WAV, play it back, or read advice aloud.</text>
+  </g>
+  <g transform="translate(464 328)">
+    <text class="module" fill="#245f50">:transcription-mediapipe</text>
+    <text class="name" y="29">MediaPipe Tasks Audio</text>
+    <text class="detail" y="55">Parakeet turns speech into editable text.</text>
+  </g>
+  <g transform="translate(44 440)">
+    <text class="module" fill="#245f50">:coaching-gemma</text>
+    <text class="name" y="29">LiteRT-LM + Gemma 4 E2B</text>
+    <text class="detail" y="55">Optional advice based on the reviewed text</text>
+  </g>
+  <g transform="translate(464 440)">
+    <text class="module" fill="#245f50">:history-local</text>
+    <text class="name" y="29">Android SQLite</text>
+    <text class="detail" y="55">SQLiteOpenHelper stores audio and feedback.</text>
+  </g>
+</svg>
